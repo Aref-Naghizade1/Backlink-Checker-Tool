@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Checker</title>
+    <style>
+        .container { max-width: 800px; margin: 20px auto; padding: 20px; }
+        .url-group { border: 1px solid #ddd; padding: 15px; margin-bottom: 10px; border-radius: 5px; }
+        .input-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 8px; margin-bottom: 10px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; cursor: pointer; }
+        button:hover { background: #45a049; }
+        #results { margin-top: 20px; }
+        .error { color: red; }
+        .file-actions { margin-top: 16px; display: flex; gap: 10px; }
+        .file-actions button { background: #008CBA; }
+        .file-actions button:hover { background: #007399; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Backlink Checker Tool</h1>
+        
+        <div id="url-groups">
+            <div class="url-group">
+                <div class="input-group">
+                    <label>Page URL:</label>
+                    <input type="text" class="page-url" placeholder="https://example.com/page">
+                </div>
+                <div class="input-group">
+                    <label>Target URL:</label>
+                    <input type="text" class="target-url" placeholder="/target-page">
+                </div>
+                <div class="input-group">
+                    <label>Anchor Text:</label>
+                    <input type="text" class="anchor-text" placeholder="Click here">
+                </div>
+                <div class="input-group">
+                    <label>Expected Rel:</label>
+                    <input type="text" class="expected-rel" placeholder="nofollow">
+                </div>
+            </div>
+        </div>
+
+        <button id="add-group">+ Add Another URL Group</button>
+        <button id="check-btn">Check URLs</button>
+
+        <div class="file-actions">
+            <button id="download-excel">Download Excel</button>
+            <input type="file" id="upload-excel" accept=".xlsx" hidden>
+            <button onclick="document.getElementById('upload-excel').click()">Upload Excel</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+    
+        document.getElementById('add-group').addEventListener('click', function() {
+            const newGroup = document.querySelector('.url-group').cloneNode(true);
+            newGroup.querySelectorAll('input').forEach(input => input.value = '');
+            document.getElementById('url-groups').appendChild(newGroup);
+        });
+
+    
+        document.getElementById('check-btn').addEventListener('click', function() {
+            const urlGroups = [];
+            
+            document.querySelectorAll('.url-group').forEach(group => {
+                urlGroups.push({
+                    pageUrl: group.querySelector('.page-url').value,
+                    targetUrl: group.querySelector('.target-url').value,
+                    anchorText: group.querySelector('.anchor-text').value,
+                    expectedRel: group.querySelector('.expected-rel').value
+                });
+            });
+
+            fetch('/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls: urlGroups })
+            })
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                let html = '<h2>Results:</h2>';
+                data.forEach((result, index) => {
+                    html += `
+                        <div class="result-group">
+                            <h3>Group ${index + 1}:</h3>
+                            <p>Status Code: ${result.status_code}</p>
+                            <p>Anchor Check: ${result.anchor_check ? '✅ Pass' : '❌ Fail'}</p>
+                            <p>Rel Check: ${result.rel_check ? '✅ Pass' : '❌ Fail'}</p>
+                            ${result.error ? `<p class="error">Error: ${result.error}</p>` : ''}
+                        </div>
+                    `;
+                });
+                document.getElementById('results').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('results').innerHTML = 
+                    `<p class="error">Error: ${error.message}</p>`;
+            });
+        });
+
+    
+        document.getElementById('upload-excel').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    
+    
+                    const urlGroups = document.getElementById('url-groups');
+                    while (urlGroups.children.length > 1) {
+                        urlGroups.removeChild(urlGroups.lastChild);
+                    }
+                    
+
+                    rows.slice(1).forEach((row, index) => {
+                        const [pageUrl, targetUrl, anchorText, expectedRel] = row;
+                        
+                        if (index >= urlGroups.children.length) {
+                            document.getElementById('add-group').click();
+                        }
+                        
+                        const group = urlGroups.children[index];
+                        group.querySelector('.page-url').value = pageUrl || '';
+                        group.querySelector('.target-url').value = targetUrl || '';
+                        group.querySelector('.anchor-text').value = anchorText || '';
+                        group.querySelector('.expected-rel').value = expectedRel || '';
+                    });
+                } catch (error) {
+                    console.error('خطا در پردازش فایل اکسل:', error);
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('download-excel').addEventListener('click', function() {
+            const urlGroups = [];
+            
+            document.querySelectorAll('.url-group').forEach(group => {
+                urlGroups.push({
+                    pageUrl: group.querySelector('.page-url').value,
+                    targetUrl: group.querySelector('.target-url').value,
+                    anchorText: group.querySelector('.anchor-text').value,
+                    expectedRel: group.querySelector('.expected-rel').value
+                });
+            });
+
+            fetch('/download-excel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls: urlGroups })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'url_data.xlsx';
+                a.click();
+                window.URL.revokeObjectURL(url);
+            })
+            .catch(error => {
+                console.error('خطا در دانلود:', error);
+            });
+        });
+    </script>
+    <footer style="text-align: center; margin-top: 20px;">
+        <p>Developed by <a href="https://github.com/yourprofilehttps://github.com/Aref-Naghizade1" target="_blank">Aref Naghizade</a></p>
+    </footer>
+</body>
+</html>
